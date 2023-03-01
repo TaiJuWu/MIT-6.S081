@@ -31,17 +31,17 @@ procinit(void)
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
 
-      // Allocate a page for the process's kernel stack.
-      // Map it high in memory, followed by an invalid
-      // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      // // Allocate a page for the process's kernel stack.
+      // // Map it high in memory, followed by an invalid
+      // // guard page.
+      // char *pa = kalloc();
+      // if(pa == 0)
+      //   panic("kalloc");
+      // uint64 va = KSTACK((int) (p - proc));
+      // kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      // p->kstack = va;
   }
-  kvminithart();
+  kvm_switch_kern_pgtbl();
 }
 
 // Must be called with interrupts disabled,
@@ -121,6 +121,16 @@ found:
     return 0;
   }
 
+  // set kernel page table and sps
+  p->kern_pagetable = proc_kern_pagetable();
+  char *pa = kalloc();
+  if(pa == 0){
+    panic("allocate kernel pgtbl");
+  }
+  uint64 va = KSTACK(0);
+  mappages(p->kern_pagetable, va, PGSIZE, (uint64)pa, PTE_R | PTE_W);
+  p->kstack = va;
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -142,6 +152,9 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+  if(p->kern_pagetable)
+    proc_free_kern_pagetable(p->kern_pagetable);
+  p->kern_pagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -473,6 +486,7 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        kvm_switch_pgtbl(p->kern_pagetable);
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
@@ -480,6 +494,7 @@ scheduler(void)
         c->proc = 0;
 
         found = 1;
+        kvm_switch_kern_pgtbl();
       }
       release(&p->lock);
     }

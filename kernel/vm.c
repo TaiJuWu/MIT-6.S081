@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -53,6 +55,20 @@ void
 kvminithart()
 {
   w_satp(MAKE_SATP(kernel_pagetable));
+  sfence_vma();
+}
+
+void
+kvm_switch_kern_pgtbl()
+{
+  w_satp(MAKE_SATP(kernel_pagetable));
+  sfence_vma();
+}
+
+void
+kvm_switch_pgtbl(uint64 *addr)
+{
+  w_satp(MAKE_SATP(addr));
   sfence_vma();
 }
 
@@ -131,8 +147,9 @@ kvmpa(uint64 va)
   uint64 off = va % PGSIZE;
   pte_t *pte;
   uint64 pa;
-  
-  pte = walk(kernel_pagetable, va, 0);
+
+  struct proc *p = myproc();  
+  pte = walk(p->kern_pagetable, va, 0);
   if(pte == 0)
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
@@ -439,4 +456,107 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+void 
+vmprint(pagetable_t pagetable0)
+{
+  printf("page table %p\n", pagetable0);
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable0[i];
+    if(!(pte & PTE_V)) continue;
+    pagetable_t pagetable1 = (pagetable_t)PTE2PA(pte);
+    printf("..%d: pte %p pa %p\n", i, pte, pagetable1);
+    
+    for(int j = 0; j < 512; ++j){
+      pte_t pte = pagetable1[j];
+      if(!(pte & PTE_V)) continue;
+      pagetable_t pagetable2 = (pagetable_t)PTE2PA(pte);
+      printf(".. ..%d: pte %p pa %p\n", j, pte, pagetable2);
+
+      for(int k = 0; k < 512; ++k){
+        pte_t pte = pagetable2[k];
+        if(!(pte & PTE_V)) continue;
+        pagetable_t pagetable3 = (pagetable_t)PTE2PA(pte);
+        printf(".. .. ..%d: pte %p pa %p\n", k, pte, pagetable3);
+      }
+    }
+  }
+}
+
+
+// create an empty kernel page table.
+// returns 0 if out of memory.
+pagetable_t
+kvmcreate()
+{
+  pagetable_t pagetable;
+  pagetable = (pagetable_t) kalloc();
+  if(pagetable == 0)
+    return 0;
+  memset(pagetable, 0, PGSIZE);
+  return pagetable;
+}
+
+pagetable_t
+proc_kern_pagetable(void)
+{
+  pagetable_t kern_pagetbl;
+
+  if((kern_pagetbl = kvmcreate()) == 0){
+    return 0;
+  }
+
+  if(mappages(kern_pagetbl, UART0, PGSIZE, UART0, PTE_R | PTE_W) != 0){
+    panic("kern_page_table_create UART0");
+  }
+
+  // virtio mmio disk interface
+  if(mappages(kern_pagetbl, VIRTIO0, PGSIZE, VIRTIO0, PTE_R | PTE_W) !=0){
+    panic("kern_page_table_create VIRTIO0");
+  }
+
+  // CLINT
+  if(mappages(kern_pagetbl, CLINT, 0x10000, CLINT, PTE_R | PTE_W) != 0){
+    panic("kern_page_table_create CLINT");
+  }
+
+  // PLIC
+  if(mappages(kern_pagetbl, PLIC, 0x400000, PLIC, PTE_R | PTE_W) != 0){
+    panic("kern_page_table_create PLIC");
+  }
+
+  // map kernel text executable and read-only.
+  if(mappages(kern_pagetbl, KERNBASE, (uint64)etext-KERNBASE, KERNBASE, PTE_R | PTE_X) != 0){
+    panic("kern_page_table_create KERNBASE");
+  }
+
+  // map kernel data and the physical RAM we'll make use of.
+  if(mappages(kern_pagetbl, (uint64)etext, PHYSTOP-(uint64)etext, (uint64)etext, PTE_R | PTE_W) != 0){
+    panic("kern_page_table_create etext");
+  }
+
+  // map the trampoline for trap entry/exit to
+  // the highest virtual address in the kernel.
+  if(mappages(kern_pagetbl, TRAMPOLINE, PGSIZE, (uint64)trampoline, PTE_R | PTE_X) != 0){
+    panic("kern_page_table_create TRAMPOLINE");
+  }
+
+  return kern_pagetbl;
+}
+
+int
+proc_free_kern_pagetable(pagetable_t pagetable)
+{
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(PTE_FLAGS(pte) == PTE_V){ // low-level page table
+       proc_free_kern_pagetable((pagetable_t)PTE2PA(pte));
+       pagetable[i] = 0;
+     } else if(pte & PTE_V){
+       pagetable[i] = 0;
+     }
+  }
+  kfree(pagetable);
+  return 0;
 }
