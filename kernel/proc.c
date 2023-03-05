@@ -31,17 +31,10 @@ procinit(void)
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
 
-      // // Allocate a page for the process's kernel stack.
-      // // Map it high in memory, followed by an invalid
-      // // guard page.
-      // char *pa = kalloc();
-      // if(pa == 0)
-      //   panic("kalloc");
-      // uint64 va = KSTACK((int) (p - proc));
-      // kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+      // uint64 va = KSTACK(0);
       // p->kstack = va;
   }
-  kvm_switch_kern_pgtbl();
+  // kvm_switch_kern_pgtbl();
 }
 
 // Must be called with interrupts disabled,
@@ -149,6 +142,8 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  if(p->kstack)
+    uvmunmap(p->kern_pagetable, p->kstack, 1, 1);
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
