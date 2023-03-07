@@ -119,6 +119,8 @@ found:
     return 0;
   }
   
+  kvm_copy_uvm(p->kern_pagetable, p->pagetable, 0, p->sz);
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -250,6 +252,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+  kvm_copy_uvm(p->kern_pagetable, p->pagetable, 0, p->sz);
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -276,7 +279,9 @@ growproc(int n)
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    kvm_copy_uvm(p->kern_pagetable, p->pagetable, sz-n, n);
   } else if(n < 0){
+    kvmdealloc(p->kern_pagetable, sz, sz + n);
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
   p->sz = sz;
@@ -304,7 +309,7 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-
+  kvm_copy_uvm(np->kern_pagetable, np->pagetable, 0, p->sz);
   np->parent = p;
 
   // copy saved user registers.

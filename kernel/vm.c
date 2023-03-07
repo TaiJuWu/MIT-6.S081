@@ -25,9 +25,6 @@ kern_pagetable_init(pagetable_t kern_pagetable)
   // virtio mmio disk interface
   kvmmap(kern_pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
-  // CLINT
-  kvmmap(kern_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
-
   // PLIC
   kvmmap(kern_pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
 
@@ -252,6 +249,9 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 
   if(newsz < oldsz)
     return oldsz;
+  
+  if(newsz > CLINT)
+    return 0;
 
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += PGSIZE){
@@ -283,6 +283,20 @@ uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
     int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
     uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
+  }
+
+  return newsz;
+}
+
+uint64
+kvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
+{
+  if(newsz >= oldsz)
+    return oldsz;
+
+  if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
+    int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
+    uvmunmap(pagetable, PGROUNDUP(newsz), npages, 0);
   }
 
   return newsz;
@@ -408,40 +422,7 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
-  uint64 n, va0, pa0;
-  int got_null = 0;
-
-  while(got_null == 0 && max > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > max)
-      n = max;
-
-    char *p = (char *) (pa0 + (srcva - va0));
-    while(n > 0){
-      if(*p == '\0'){
-        *dst = '\0';
-        got_null = 1;
-        break;
-      } else {
-        *dst = *p;
-      }
-      --n;
-      --max;
-      p++;
-      dst++;
-    }
-
-    srcva = va0 + PGSIZE;
-  }
-  if(got_null){
-    return 0;
-  } else {
-    return -1;
-  }
+  return copyinstr_new(pagetable, dst, srcva, max);
 }
 
 void 
@@ -498,9 +479,34 @@ kvmfree(pagetable_t pagetable)
     if(PTE_FLAGS(pte) == PTE_V){ // low-level page table
        kvmfree((pagetable_t)PTE2PA(pte));
        pagetable[i] = 0;
-     } else if(pte & PTE_V){
+     } else{
        pagetable[i] = 0;
      }
   }
   kfree(pagetable);
+}
+
+void
+kvm_copy_uvm(pagetable_t kern_pagetable, const pagetable_t user_pagetable, const uint64 start, const uint64 sz) 
+{
+  pte_t *pte;
+  uint64 pa, flags;
+  uint64 aligned_start = PGROUNDUP(start);
+  uint64 end = start + sz;
+
+  for(uint64 va = aligned_start; va < end; va += PGSIZE) {
+    if((pte = walk(user_pagetable, va, 0)) == 0) {
+      panic("kvm_copy_uvm: walk");
+    }
+
+    if((*pte & PTE_V) == 0)
+      panic("kvm_copy_uvm: page not present");
+
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+
+    if(mappages(kern_pagetable, va, PGSIZE, pa, flags & ~PTE_U) != 0) {
+      panic("kvm_copy_uvm: mappages");
+    }
+  }
 }
