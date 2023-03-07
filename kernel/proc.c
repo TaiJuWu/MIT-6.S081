@@ -119,7 +119,11 @@ found:
     return 0;
   }
   
-  kvm_copy_uvm(p->kern_pagetable, p->pagetable, 0, p->sz);
+  if(kvm_copy_uvm(p->kern_pagetable, p->pagetable, 0, p->sz) < 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -279,7 +283,9 @@ growproc(int n)
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
-    kvm_copy_uvm(p->kern_pagetable, p->pagetable, sz-n, n);
+    if(kvm_copy_uvm(p->kern_pagetable, p->pagetable, sz-n, n) < 0) {
+      return -1;
+    }
   } else if(n < 0){
     kvmdealloc(p->kern_pagetable, sz, sz + n);
     sz = uvmdealloc(p->pagetable, sz, sz + n);
@@ -309,7 +315,10 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-  kvm_copy_uvm(np->kern_pagetable, np->pagetable, 0, p->sz);
+  if(kvm_copy_uvm(np->kern_pagetable, np->pagetable, 0, p->sz) < 0){
+    return -1;
+  }
+
   np->parent = p;
 
   // copy saved user registers.

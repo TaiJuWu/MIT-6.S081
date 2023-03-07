@@ -189,7 +189,7 @@ int             copyin_new(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 int             copyinstr_new(pagetable_t, char *, uint64, uint64);
 void            vmprint(pagetable_t);
-void            kvm_copy_uvm(pagetable_t, const pagetable_t, const uint64, const uint64);
+int             kvm_copy_uvm(pagetable_t, const pagetable_t, const uint64, const uint64);
 
 // plic.c
 void            plicinit(void);

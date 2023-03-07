@@ -486,7 +486,7 @@ kvmfree(pagetable_t pagetable)
   kfree(pagetable);
 }
 
-void
+int
 kvm_copy_uvm(pagetable_t kern_pagetable, const pagetable_t user_pagetable, const uint64 start, const uint64 sz) 
 {
   pte_t *pte;
@@ -506,7 +506,8 @@ kvm_copy_uvm(pagetable_t kern_pagetable, const pagetable_t user_pagetable, const
     flags = PTE_FLAGS(*pte);
 
     if(mappages(kern_pagetable, va, PGSIZE, pa, flags & ~PTE_U) != 0) {
-      panic("kvm_copy_uvm: mappages");
+      return -1;
     }
   }
+  return 0;
 }

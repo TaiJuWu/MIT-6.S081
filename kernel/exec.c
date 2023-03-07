@@ -117,7 +117,9 @@ exec(char *path, char **argv)
   proc_free_pagetable(oldpagetable, oldsz);
 
   kvmunmap(p->kern_pagetable, 0, oldsz / PGSIZE, 0);  
-  kvm_copy_uvm(p->kern_pagetable, p->pagetable, 0, p->sz);
+  if(kvm_copy_uvm(p->kern_pagetable, p->pagetable, 0, p->sz) < 0) {
+    goto bad;
+  }
 
   if(p->pid == 1)
     vmprint(p->pagetable);
