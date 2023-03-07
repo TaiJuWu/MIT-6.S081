@@ -250,7 +250,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   if(newsz < oldsz)
     return oldsz;
   
-  if(newsz > CLINT)
+  if(newsz >= PLIC)
     return 0;
 
   oldsz = PGROUNDUP(oldsz);
@@ -506,6 +506,7 @@ kvm_copy_uvm(pagetable_t kern_pagetable, const pagetable_t user_pagetable, const
     flags = PTE_FLAGS(*pte);
 
     if(mappages(kern_pagetable, va, PGSIZE, pa, flags & ~PTE_U) != 0) {
+      uvmunmap(kern_pagetable, aligned_start, (va-aligned_start) / PGSIZE, 1);
       return -1;
     }
   }

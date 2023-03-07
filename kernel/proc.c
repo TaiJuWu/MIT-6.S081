@@ -31,7 +31,6 @@ procinit(void)
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
   }
-  // kvm_switch_kern_pagetable();
 }
 
 // Must be called with interrupts disabled,
