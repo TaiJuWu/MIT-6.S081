@@ -87,6 +87,7 @@ struct proc {
   struct spinlock lock;
 
   // for timer
+  int is_set_alarm;
   int tick_counter;
   int interval;
   uint64 handler_fn;

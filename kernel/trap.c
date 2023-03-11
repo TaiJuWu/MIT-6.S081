@@ -71,7 +71,8 @@ usertrap(void)
       if(p->interval == 0 && p->handler_fn == 0) {
         p->tick_counter = 0;
       }
-      else if(p->tick_counter == p->interval) {
+      else if(!p->is_set_alarm && p->tick_counter >= p->interval) {
+        p->is_set_alarm = 1;
         memmove(p->alarm_trapframe, p->trapframe, sizeof(struct trapframe));
         p->tick_counter = 0;
         p->trapframe->epc = p->handler_fn;
