@@ -71,7 +71,7 @@ usertrap(void)
     uint64 va = r_stval();
     char *pa;
 
-    if(va > p->sz || va > MAXVA || va < 0 || va < p->trapframe->sp) {
+    if(va > p->sz || va < p->trapframe->sp || va > MAXVA) {
       p->killed = 1;
       goto death;
     }
@@ -79,11 +79,13 @@ usertrap(void)
     va = PGROUNDDOWN(va);
     if((pa = kalloc()) == 0) {
       p->killed = 1;
+      goto death;
     }
     memset(pa, 0, PGSIZE);
     if(mappages(p->pagetable, va, PGSIZE, (uint64)pa, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
       kfree(pa);
       p->killed = 1;
+      goto death;
     }
 
   } else {

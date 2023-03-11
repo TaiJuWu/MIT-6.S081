@@ -112,6 +112,7 @@ walkaddr(pagetable_t pagetable, uint64 va)
     char *mem = kalloc();
     if(mem == 0) {
       p->killed = 1;
+      return 0;
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, PTE_W | PTE_R | PTE_U) != 0){
