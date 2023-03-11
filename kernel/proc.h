@@ -90,7 +90,7 @@ struct proc {
   int tick_counter;
   int interval;
   uint64 handler_fn;
-  uint64 alarm_return_pc;
+  struct trapframe *alarm_trapframe;
 
   // p->lock must be held when using these:
   enum procstate state;        // Process state

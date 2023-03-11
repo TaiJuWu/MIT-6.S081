@@ -106,9 +106,10 @@ sys_sigalarm(void)
     return -1;
   if(argaddr(1, &fn) < 0)
     return -1;
-  
-  myproc()->interval = xticks;
-  myproc()->handler_fn = fn;
+
+  struct proc *p = myproc();
+  p->interval = xticks;
+  p->handler_fn = fn;
 
   return 0;
 }
@@ -116,5 +117,7 @@ sys_sigalarm(void)
 uint64 
 sys_sigreturn(void)
 {
+  struct proc *p = myproc();
+  memmove(p->trapframe, p->alarm_trapframe, sizeof(struct trapframe));
   return 0;
 }

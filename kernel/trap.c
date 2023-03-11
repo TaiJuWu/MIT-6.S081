@@ -72,6 +72,7 @@ usertrap(void)
         p->tick_counter = 0;
       }
       else if(p->tick_counter == p->interval) {
+        memmove(p->alarm_trapframe, p->trapframe, sizeof(struct trapframe));
         p->tick_counter = 0;
         p->trapframe->epc = p->handler_fn;
       }
