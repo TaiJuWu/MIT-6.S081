@@ -106,6 +106,9 @@ sys_sigalarm(void)
     return -1;
   if(argaddr(1, &fn) < 0)
     return -1;
+  
+  myproc()->interval = xticks;
+  myproc()->handler_fn = fn;
 
   return 0;
 }

@@ -86,6 +86,12 @@ enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 struct proc {
   struct spinlock lock;
 
+  // for timer
+  int tick_counter;
+  int interval;
+  uint64 handler_fn;
+  uint64 alarm_return_pc;
+
   // p->lock must be held when using these:
   enum procstate state;        // Process state
   struct proc *parent;         // Parent process
