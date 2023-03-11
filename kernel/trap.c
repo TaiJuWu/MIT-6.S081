@@ -68,10 +68,16 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   }else if(r_scause() == 13 || r_scause() == 15) {
-    uint64 va = PGROUNDDOWN(r_stval());
+    uint64 va = r_stval();
     char *pa;
+
+    if(va > p->sz || va > MAXVA || va < 0 || va < p->trapframe->sp) {
+      p->killed = 1;
+      goto death;
+    }
+    
+    va = PGROUNDDOWN(va);
     if((pa = kalloc()) == 0) {
-      panic("no physical memory");
       p->killed = 1;
     }
     memset(pa, 0, PGSIZE);
@@ -86,6 +92,7 @@ usertrap(void)
     p->killed = 1;
   }
 
+death:
   if(p->killed)
     exit(-1);
 
