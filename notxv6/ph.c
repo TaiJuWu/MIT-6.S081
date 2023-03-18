@@ -8,7 +8,7 @@
 #define NBUCKET 5
 #define NKEYS 100000
 
-static  pthread_mutex_t lock;            // declare a lock
+static  pthread_mutex_t lock[NBUCKET];            // declare a lock
 
 struct entry {
   int key;
@@ -44,6 +44,7 @@ void put(int key, int value)
 
   // is the key already present?
   struct entry *e = 0;
+  pthread_mutex_lock(&lock[i]);
   for (e = table[i]; e != 0; e = e->next) {
     if (e->key == key)
       break;
@@ -55,6 +56,7 @@ void put(int key, int value)
     // the new is new.
     insert(key, value, &table[i], table[i]);
   }
+  pthread_mutex_unlock(&lock[i]);
 }
 
 static struct entry*
@@ -62,11 +64,12 @@ get(int key)
 {
   int i = key % NBUCKET;
 
-
+  pthread_mutex_lock(&lock[i]);
   struct entry *e = 0;
   for (e = table[i]; e != 0; e = e->next) {
     if (e->key == key) break;
   }
+  pthread_mutex_unlock(&lock[i]);
 
   return e;
 }
@@ -77,11 +80,9 @@ put_thread(void *xa)
   int n = (int) (long) xa; // thread number
   int b = NKEYS/nthread;
 
-  pthread_mutex_lock(&lock);
   for (int i = 0; i < b; i++) {
     put(keys[b*n + i], n);
   }
-  pthread_mutex_unlock(&lock);
 
   return NULL;
 }
@@ -92,12 +93,10 @@ get_thread(void *xa)
   int n = (int) (long) xa; // thread number
   int missing = 0;
 
-  pthread_mutex_lock(&lock);
   for (int i = 0; i < NKEYS; i++) {
     struct entry *e = get(keys[i]);
     if (e == 0) missing++;
   }
-  pthread_mutex_unlock(&lock);
 
   printf("%d: %d keys missing\n", n, missing);
   return NULL;
@@ -121,8 +120,10 @@ main(int argc, char *argv[])
   for (int i = 0; i < NKEYS; i++) {
     keys[i] = random();
   }
-
-  pthread_mutex_init(&lock, NULL); // initialize the lock
+  
+  for(int i = 0; i < NBUCKET; ++i) {
+    pthread_mutex_init(&lock[i], NULL); // initialize the lock
+  }
 
   //
   // first the puts
