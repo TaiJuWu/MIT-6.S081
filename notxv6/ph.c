@@ -8,6 +8,8 @@
 #define NBUCKET 5
 #define NKEYS 100000
 
+static  pthread_mutex_t lock;            // declare a lock
+
 struct entry {
   int key;
   int value;
@@ -75,9 +77,11 @@ put_thread(void *xa)
   int n = (int) (long) xa; // thread number
   int b = NKEYS/nthread;
 
+  pthread_mutex_lock(&lock);
   for (int i = 0; i < b; i++) {
     put(keys[b*n + i], n);
   }
+  pthread_mutex_unlock(&lock);
 
   return NULL;
 }
@@ -88,10 +92,13 @@ get_thread(void *xa)
   int n = (int) (long) xa; // thread number
   int missing = 0;
 
+  pthread_mutex_lock(&lock);
   for (int i = 0; i < NKEYS; i++) {
     struct entry *e = get(keys[i]);
     if (e == 0) missing++;
   }
+  pthread_mutex_unlock(&lock);
+
   printf("%d: %d keys missing\n", n, missing);
   return NULL;
 }
@@ -114,6 +121,8 @@ main(int argc, char *argv[])
   for (int i = 0; i < NKEYS; i++) {
     keys[i] = random();
   }
+
+  pthread_mutex_init(&lock, NULL); // initialize the lock
 
   //
   // first the puts
