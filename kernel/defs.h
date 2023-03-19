@@ -1,3 +1,7 @@
+#define DBG() do {\
+  printf("%s %s %d\n", __FILE__, __func__, __LINE__);\
+}while(0);
+
 struct buf;
 struct context;
 struct file;
@@ -63,6 +67,7 @@ void            ramdiskrw(struct buf*);
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+void increase_ref_counter(void *pa);
 
 // log.c
 void            initlog(int, struct superblock*);
@@ -171,6 +176,7 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
+int             cow_handler(pagetable_t pagetable, uint64 va);
 
 // plic.c
 void            plicinit(void);
