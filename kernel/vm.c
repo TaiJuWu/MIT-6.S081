@@ -162,6 +162,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
     if(a == last)
       break;
 
+    // tricky 1: should before break
     if(KERNBASE <= pa && pa < PHYSTOP){
       increase_ref_counter((void *)pa);
     }
@@ -328,6 +329,8 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       goto err;
     }
+    // tricky 2: we already increase counter in mappages...
+    increase_ref_counter((void *)pa);
   }
   return 0;
 
@@ -475,8 +478,8 @@ pagefualt_handler(pagetable_t pagetable, uint64 va)
     return -1;
   }
 
-  uvmunmap(pagetable, aligned_va, 1, 1);
   memmove((void *)new_pa, (void *)old_pa, PGSIZE);
+  uvmunmap(pagetable, aligned_va, 1, 1);
   if(mappages(pagetable, aligned_va, PGSIZE, new_pa, new_flags) != 0){
     kfree((void *)new_pa);
     return -1;
