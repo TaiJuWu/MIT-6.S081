@@ -159,13 +159,9 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
     if(*pte & PTE_V)
       panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
+
     if(a == last)
       break;
-
-    // tricky 1: should before break
-    if(KERNBASE <= pa && pa < PHYSTOP){
-      increase_ref_counter((void *)pa);
-    }
 
     a += PGSIZE;
     pa += PGSIZE;
@@ -365,6 +361,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
+
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
