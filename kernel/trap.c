@@ -75,10 +75,10 @@ usertrap(void)
     } else if(va >= p->sz) {
       p->killed = 1;
       goto death;
-    } else if(va < p->trapframe->sp && va >= PGROUNDDOWN(p->trapframe->sp) - PGSIZE) {
+    } else if(PGROUNDDOWN(p->trapframe->sp) <= va && va < p->trapframe->sp) {
       p->killed = 1;
       goto death;
-    } else if(pagefualt_handler(p->pagetable, va) != 0) {
+    } else if(pagefault_handler(p->pagetable, va) != 0) {
       p->killed = 1;
       goto death;
     }

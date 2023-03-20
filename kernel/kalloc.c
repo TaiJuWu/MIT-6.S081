@@ -17,9 +17,6 @@ void freerange(void *pa_start, void *pa_end);
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
-static int ref_counter[NUM_OF_PAGE];
-static struct spinlock ref_lock[NUM_OF_PAGE];
-
 struct run {
   struct run *next;
 };
@@ -27,15 +24,17 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
+  int ref_counter[NUM_OF_PAGE];
+  struct spinlock ref_lock[NUM_OF_PAGE];
 } kmem;
 
 void
 kinit()
 {
   for(int i = 0; i < NUM_OF_PAGE; ++i) {
-    initlock(&ref_lock[i], "ref_lock");
+    initlock(&kmem.ref_lock[i], "kmem.ref_lock");
   }
-  memset(ref_counter, 0, sizeof(ref_counter));
+  memset(kmem.ref_counter, 0, sizeof(kmem.ref_counter));
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)PHYSTOP);
 }
@@ -65,18 +64,18 @@ kfree(void *pa)
   r = (struct run*)pa;
   idx = PA2IDX((uint64)r);
 
-  acquire(&ref_lock[idx]);
-  ref_counter[idx] -= 1;
-  if(ref_counter[idx] <= 0) {
+  acquire(&kmem.ref_lock[idx]);
+  kmem.ref_counter[idx] -= 1;
+  if(kmem.ref_counter[idx] <= 0) {
     // Fill with junk to catch dangling refs.
     memset(pa, 1, PGSIZE);
     acquire(&kmem.lock);
     r->next = kmem.freelist;
     kmem.freelist = r;
-    ref_counter[idx] = 0;
+    kmem.ref_counter[idx] = 0;
     release(&kmem.lock);
   }
-  release(&ref_lock[idx]);
+  release(&kmem.ref_lock[idx]);
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -97,9 +96,9 @@ kalloc(void)
   if(r) {
     idx = PA2IDX((uint64)r);
     memset((char*)r, 5, PGSIZE); // fill with junk
-    acquire(&ref_lock[idx]);
-    ref_counter[idx] = 1;
-    release(&ref_lock[idx]);
+    acquire(&kmem.ref_lock[idx]);
+    kmem.ref_counter[idx] = 1;
+    release(&kmem.ref_lock[idx]);
   }
     
   return (void*)r;
@@ -107,7 +106,7 @@ kalloc(void)
 
 void increase_ref_counter(void *pa) {
   uint64 idx = PA2IDX(pa);
-  acquire(&ref_lock[idx]);
-  ref_counter[idx] += 1;
-  release(&ref_lock[idx]);
+  acquire(&kmem.ref_lock[idx]);
+  kmem.ref_counter[idx] += 1;
+  release(&kmem.ref_lock[idx]);
 }

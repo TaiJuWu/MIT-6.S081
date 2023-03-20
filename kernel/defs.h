@@ -1,7 +1,3 @@
-#define DBG() do {\
-  printf("%s %s %d\n", __FILE__, __func__, __LINE__);\
-}while(0);
-
 struct buf;
 struct context;
 struct file;
@@ -177,7 +173,7 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 int             is_pagefault(pagetable_t pagetable, uint64 va);
-int             pagefualt_handler(pagetable_t pagetable, uint64 va);
+int             pagefault_handler(pagetable_t pagetable, uint64 va);
 
 // plic.c
 void            plicinit(void);

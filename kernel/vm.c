@@ -362,7 +362,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
       return -1;
     }
 
-    if(pagefualt_handler(pagetable, va0) < 0) {
+    if(pagefault_handler(pagetable, va0) < 0) {
       return -1;
     }
 
@@ -451,7 +451,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 }
 
 int 
-pagefualt_handler(pagetable_t pagetable, uint64 va)
+pagefault_handler(pagetable_t pagetable, uint64 va)
 {
   uint64 old_pa;
   uint64 new_pa;
@@ -468,10 +468,11 @@ pagefualt_handler(pagetable_t pagetable, uint64 va)
   if((*pte & PTE_U) == 0)
     return -1;
   
+  if(pte == 0 || ((PTE_FLAGS(*pte) & PTE_V) == 0)) {
+    panic("pagefault find invalid pte");
+  }
+
   if(*pte & PTE_C) {
-    if(pte == 0 || ((PTE_FLAGS(*pte) & PTE_V) == 0)) {
-      panic("pagefault find invalid pte");
-    }
     old_pa = (uint64)PTE2PA(*pte);
     old_flags = PTE_FLAGS(*pte);
     new_flags = (old_flags & ~PTE_C) | PTE_W;
