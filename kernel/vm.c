@@ -325,7 +325,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       goto err;
     }
-    // tricky 2: we already increase counter in mappages...
     increase_ref_counter((void *)pa);
   }
   return 0;
@@ -358,6 +357,15 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+
+    if(va0 >= MAXVA) {
+      return -1;
+    }
+
+    if(pagefualt_handler(pagetable, va0) < 0) {
+      return -1;
+    }
+
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
@@ -459,28 +467,27 @@ pagefualt_handler(pagetable_t pagetable, uint64 va)
     return -1;
   if((*pte & PTE_U) == 0)
     return -1;
+  
+  if(*pte & PTE_C) {
+    if(pte == 0 || ((PTE_FLAGS(*pte) & PTE_V) == 0)) {
+      panic("pagefault find invalid pte");
+    }
+    old_pa = (uint64)PTE2PA(*pte);
+    old_flags = PTE_FLAGS(*pte);
+    new_flags = (old_flags & ~PTE_C) | PTE_W;
 
-  if(!(*pte & PTE_C))
-    return -1;
-    
-  if(pte == 0 || ((PTE_FLAGS(*pte) & PTE_V) == 0)) {
-    panic("pagefault find invalid pte");
+    new_pa = (uint64)kalloc();
+    if(new_pa == 0) {
+      return -1;
+    }
+
+    memmove((void *)new_pa, (void *)old_pa, PGSIZE);
+    uvmunmap(pagetable, aligned_va, 1, 1);
+    if(mappages(pagetable, aligned_va, PGSIZE, new_pa, new_flags) != 0){
+      kfree((void *)new_pa);
+      return -1;
+    } 
   }
-  old_pa = (uint64)PTE2PA(*pte);
-  old_flags = PTE_FLAGS(*pte);
-  new_flags = (old_flags & ~PTE_C) | PTE_W;
-
-  new_pa = (uint64)kalloc();
-  if(new_pa == 0) {
-    return -1;
-  }
-
-  memmove((void *)new_pa, (void *)old_pa, PGSIZE);
-  uvmunmap(pagetable, aligned_va, 1, 1);
-  if(mappages(pagetable, aligned_va, PGSIZE, new_pa, new_flags) != 0){
-    kfree((void *)new_pa);
-    return -1;
-  } 
 
   return 0;
 }
