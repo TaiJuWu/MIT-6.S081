@@ -78,35 +78,40 @@ bget(uint dev, uint blockno)
 {
   struct buf *b;
 
-  acquire(&bcache.lock);
-
+  uint hash_idx = hash_val(blockno);
   // Is the block already cached?
-  for(int i = 0; i < NUM_BUCKET; ++i){
-    for(b = bcache.head[i].next; b != &bcache.head[i]; b = b->next){
-      if(b->dev == dev && b->blockno == blockno){
-        b->refcnt++;
-        release(&bcache.lock);
-        acquiresleep(&b->lock);
-        return b;
-      }
+  acquire(&bcache.hash_lock[hash_idx]);
+  for(b = bcache.head[hash_idx].next; b != &bcache.head[hash_idx]; b = b->next){
+    if(b->dev == dev && b->blockno == blockno){
+      b->refcnt++;
+      b->lru_timestamp = ticks;
+      release(&bcache.hash_lock[hash_idx]);
+      acquiresleep(&b->lock);
+      return b;
     }
   }
+  release(&bcache.hash_lock[hash_idx]);
 
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
+  acquire(&bcache.lock);
   for(int i = 0; i < NUM_BUCKET; ++i){
+    acquire(&bcache.hash_lock[hash_idx]);
     for(b = bcache.head[i].prev; b != &bcache.head[i]; b = b->prev){
       if(b->refcnt == 0) {
         b->dev = dev;
         b->blockno = blockno;
         b->valid = 0;
         b->refcnt = 1;
+        release(&bcache.hash_lock[hash_idx]);
         release(&bcache.lock);
         acquiresleep(&b->lock);
         return b;
       }
     }
+    release(&bcache.hash_lock[hash_idx]);
   }
+  release(&bcache.lock);
   panic("bget: no buffers");
 }
 
