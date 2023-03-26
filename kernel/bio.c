@@ -94,37 +94,51 @@ bget(uint dev, uint blockno)
 
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
-  uint new_idx = hash_val(blockno);
   acquire(&bcache.lock);
-  acquire(&bcache.hash_lock[new_idx]);
+  acquire(&bcache.hash_lock[hash_idx]);
+  
+  // Make share there is no proecess modified bucket when this process
+  // give up butcket lock. The circumstance is T1 first enter bget and
+  // and check the block is not cached and give up bucket lock. In the
+  // same time, T2 enter bget and finish it. The situation cause T1 need
+  // to check bucket is already cached again. 
+  for(b = bcache.head[hash_idx].next; b != &bcache.head[hash_idx]; b = b->next){
+    if(b->dev == dev && b->blockno == blockno){
+      b->refcnt++;
+      b->lru_timestamp = ticks;
+      release(&bcache.hash_lock[hash_idx]);
+      release(&bcache.lock);
+      acquiresleep(&b->lock);
+      return b;
+    }
+  }
+
+  // If loop run from i=hash_idx, it will cause circular waiting.
   for(int i = 0; i < NUM_BUCKET; ++i){
-    if(i != new_idx)
-      acquire(&bcache.hash_lock[i]);
+    if(i == hash_idx) continue;
+    acquire(&bcache.hash_lock[i]);
     for(b = bcache.head[i].prev; b != &bcache.head[i]; b = b->prev){
       if(b->refcnt == 0) {
-
         b->prev->next = b->next;
         b->next->prev = b->prev;
-        b->next = bcache.head[new_idx].next;
-        b->prev = &bcache.head[new_idx];
-        bcache.head[new_idx].next->prev = b;
-        bcache.head[new_idx].next = b;
+        b->next = bcache.head[hash_idx].next;
+        b->prev = &bcache.head[hash_idx];
+        bcache.head[hash_idx].next->prev = b;
+        bcache.head[hash_idx].next = b;
 
         b->dev = dev;
         b->blockno = blockno;
         b->valid = 0;
         b->refcnt = 1;
-
-        if(i != new_idx)
-          release(&bcache.hash_lock[i]);
-        release(&bcache.hash_lock[new_idx]);
+        
+        release(&bcache.hash_lock[hash_idx]);
+        release(&bcache.hash_lock[i]);
         release(&bcache.lock);
         acquiresleep(&b->lock);
         return b;
       }
     }
-    if(i != new_idx)
-      release(&bcache.hash_lock[i]);
+    release(&bcache.hash_lock[i]);
   }
   
   panic("bget: no buffers");
