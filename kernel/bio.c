@@ -114,34 +114,51 @@ bget(uint dev, uint blockno)
   }
 
   // If loop run from i=hash_idx, it will cause circular waiting.
+  // For each bucket, we select local LRU and the global LRU is selected
+  // by compare these local LRU.
+  struct buf *victim = 0;
+  struct spinlock *victim_lock = 0;
   for(int i = 0; i < NUM_BUCKET; ++i){
     if(i == hash_idx) continue;
     acquire(&bcache.hash_lock[i]);
     for(b = bcache.head[i].prev; b != &bcache.head[i]; b = b->prev){
       if(b->refcnt == 0) {
-        b->prev->next = b->next;
-        b->next->prev = b->prev;
-        b->next = bcache.head[hash_idx].next;
-        b->prev = &bcache.head[hash_idx];
-        bcache.head[hash_idx].next->prev = b;
-        bcache.head[hash_idx].next = b;
-
-        b->dev = dev;
-        b->blockno = blockno;
-        b->valid = 0;
-        b->refcnt = 1;
-        
-        release(&bcache.hash_lock[hash_idx]);
-        release(&bcache.hash_lock[i]);
-        release(&bcache.lock);
-        acquiresleep(&b->lock);
-        return b;
+        if(victim == 0) {
+          victim = b;
+          victim_lock = &bcache.hash_lock[i];
+        }else if(b->lru_timestamp < victim->lru_timestamp){
+          victim = b;
+          release(victim_lock); // release previous victim's lock
+          victim_lock = &bcache.hash_lock[i];
+        }
+        break;
       }
     }
-    release(&bcache.hash_lock[i]);
+    if(victim_lock != &bcache.hash_lock[i]) // if the lock belong victim, hold it
+      release(&bcache.hash_lock[i]);
   }
+
+  if(victim == 0)
+    panic("bget: no buffers");
+
+  b = victim;
+  b->prev->next = b->next;
+  b->next->prev = b->prev;
+  b->next = bcache.head[hash_idx].next;
+  b->prev = &bcache.head[hash_idx];
+  bcache.head[hash_idx].next->prev = b;
+  bcache.head[hash_idx].next = b;
+
+  b->dev = dev;
+  b->blockno = blockno;
+  b->valid = 0;
+  b->refcnt = 1;
   
-  panic("bget: no buffers");
+  release(&bcache.hash_lock[hash_idx]);
+  release(victim_lock);
+  release(&bcache.lock);
+  acquiresleep(&b->lock);
+  return b;
 }
 
 // Return a locked buf with the contents of the indicated block.
